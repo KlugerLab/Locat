@@ -1,0 +1,54 @@
+[build-system]
+requires = ["flit_core", "flit_scm"]
+build-backend = "flit_scm:buildapi"
+
+[project]
+name = "locat"
+dynamic = ['version']
+description = "Locat identifies marker genes enriched within a compact subset of cells and depleted elsewhere"
+license = {file = "LICENSE"}
+readme = "README.md"
+
+authors = [
+    {name = "Wes Lewis", email = "wes.lewis@yale.edu"},
+    {name = "Fabio Parisi", email = "fabio.parisi@pcmgf.com"},
+    {name = "Francesco Strino", email = "francesco.strino@pcmgf.com"},
+    {name = "Yuval Kluger", email = "yuval.kluger@yale.edu"},
+]
+maintainers = [
+    {name = "Wes Lewis", email = "wes.lewis@yale.edu"},
+    {name = "Fabio Parisi", email = "fabio.parisi@pcmgf.com"},
+    {name = "Francesco Strino", email = "francesco.strino@pcmgf.com"},
+]
+
+keywords = ["Locat", "Localized genes"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python",
+    "License :: OSI Approved :: BSD License",
+    "Intended Audience :: Science/Research",
+]
+
+requires-python = ">=3.10"
+dependencies = [
+    "scanpy",
+    "loguru",
+    "jax",
+    "tensorflow_probability",
+]
+
+[tool.flit.sdist]
+exclude = [".gitignore"]
+
+[tool.setuptools_scm]
+write_to = "locat/_version.py"
+
+[project.optional-dependencies]
+dev = ["pytest", "flit_core", "flit_scm"]
+cuda12 = ["jax[cuda12]"]
+cuda13 = ["jax[cuda13]"]
+
+[project.urls]
+Documentation = "https://github.com/KlugerLab/Locat"
+Repository = "https://github.com/KlugerLab/Locat"
+"Bug Tracker" = "https://github.com/KlugerLab/Locat/issues"
