@@ -4,7 +4,7 @@ concentrated expression domains while excluding broadly expressed background
 genes across diverse biological contexts.
 
 The documentation is available at <https://klugerlab.github.io/Locat>.
-Additional code and supporting information for the Locat paper is available at  <https://klugerlab.github.io/Locat-paper>.
+Additional code and supporting information for the Locat paper is available at <https://github.com/Klugerlab/Locat-paper>.
 
 ## Installation ## 
 The main version of the package can be installed as
