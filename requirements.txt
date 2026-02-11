@@ -1,5 +1,5 @@
 scanpy
 loguru
-jax
+jax<0.7
 tensorflow_probability
 pytest

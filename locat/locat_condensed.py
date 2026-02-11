@@ -35,6 +35,11 @@ class LOCATNullDistribution:
 
 
 class LOCAT:
+    """
+
+    The main LOCAT class
+
+    """
     _cell_dist = None
     _min_dist = None
     _knn = None
@@ -770,7 +775,7 @@ class LOCAT:
             leave=True,
             disable=self._disable_progress_info,
         ):
-            gene_prior = self.background_pdf(i_gene, weights_transform)
+            gene_prior = self.get_gene_prior(i_gene, weights_transform)
             try:
                 if np.sum(gene_prior) == 0:
                     gzeros.append(self._adata.var_names[i_gene])
