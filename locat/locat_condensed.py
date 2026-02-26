@@ -837,8 +837,8 @@ class LOCAT:
                 p_cauchy = cauchy_combine([localization_pval, concentration_pval])
                 p_size = _safe_p(1.0 - np.exp(-1.0 / (sample_size + 1.0)))
                 p_sens = _safe_p(1.0 - (sens_score + 1e-9))
-                p_final = 1.0 - (1.0 - p_cauchy) * (1.0 - 0.15 * p_size) * (
-                    1.0 - 0.35 * p_sens
+                p_final = 1.0 - (1.0 - p_cauchy) * (1.0 - 0.05 * p_size) * (
+                    1.0 - 0.12 * p_sens
                 )
                 p_final = float(smooth_qvals(np.array([_safe_p(p_final)]))[0])
 
