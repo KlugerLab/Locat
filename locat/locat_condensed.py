@@ -686,7 +686,7 @@ class LOCAT:
             return out
 
         m_eff = tested
-        sidak_logp = _logsidak_from_logp(best_logp, m_eff)
+        sidak_logp = logsidak_from_logp(best_logp, m_eff)
 
         p_value = float(np.exp(sidak_logp))
         raw_min_p = float(np.exp(best_logp))
@@ -1331,17 +1331,17 @@ def normal_sf(x, mu, sigma):
     return 0.5 * math.erfc(z * 0.7071067811865476)  # = 1 - Phi(z)
 
 
-def _logsidak_from_logp(logp_min: float, m_eff: int) -> float:
+def logsidak_from_logp(logp_min: float, m_eff: int) -> float:
     """
     Sidák combine in log-space:
       log p_sidák = log(1 - (1 - p_min)^m_eff)
                   = log(1 - exp(m_eff * log(1 - p_min)))
     with log(1 - p_min) = log1p(-exp(logp_min)).
     """
-    if m_eff <= 1:
-        return float(logp_min)
+    if m_eff <= 1 or logp_min <= 0:
+        return logp_min
     l1mp = np.log1p(-np.exp(logp_min))
-    return float(np.log1p(-np.exp(m_eff * l1mp)))
+    return np.log1p(-np.exp(m_eff * l1mp))
 
 
 @numba.njit
