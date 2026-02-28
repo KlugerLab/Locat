@@ -748,7 +748,7 @@ class LOCAT:
         rc_c_values=None,  # default inside method
         rc_min_p0_abs=0.10, #minimum proportion of f0 density in depleted region required for the region pval to be estimated
         rc_min_expected=30, #minimum expected cells in depleted region required for the region pval to be estimated
-        rc_min_abs_deficit=0.02, #minimum absolute difference in f1(x) - f0(x) for all x in depleted region
+        rc_min_abs_deficit=0.04, #minimum absolute difference in f1(x) - f0(x) for all x in depleted region
         rc_n_trials_cap=500, #maximum effective sample size
         rc_soft_bound=1.0, #this is unused/can be removed
         rc_n_eff_scale=0.5, #scaling factor for effective sample sizes -- can be tweaked to stabilize pvalues across various gene sample sizes
