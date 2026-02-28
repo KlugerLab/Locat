@@ -754,7 +754,7 @@ class LOCAT:
         rc_n_eff_scale=0.5, #scaling factor for effective sample sizes -- can be tweaked to stabilize pvalues across various gene sample sizes
         rc_p_floor=1e-12, # this is just model precision, can be ignored
         rc_rho_bb=0.02, #this is the strength of the beta binomial (0.0 is standard binomial, set at 0.02-0.05 for wider tails)
-        rc_weight_mode="amount",
+        rc_weight_mode="binary",
         rc_eps_rel=0.01,
     ):
         if verbose:
