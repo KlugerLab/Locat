@@ -126,18 +126,19 @@ class LOCAT:
     # Data access / options
     # ------------------------------------------------------------------
     @property
-    def W(self):
+    def W_t(self):
+        """
+        Implementation-oriented expression matrix (cells x genes).
+
+        This is the transpose of the manuscript's W object, which is
+        described in gene x cell orientation.
+        """
         if self._X is None:
             X = self._adata.X
             if not isinstance(X, np.ndarray):
                 X = X.toarray()
             self._X = X.astype(self._dtype, copy=False)
         return self._X
-
-    @property
-    def X(self):
-        # Backward-compatible alias for previous property name.
-        return self.W
 
     def show_progress(self, show_progress=True):
         self._disable_progress_info = not show_progress
@@ -159,7 +160,7 @@ class LOCAT:
         bic_component_cost = self.n_dims * (self.n_dims + 3) / 2
 
         if weights_transform is not None:
-            Xdense = self.W.copy()
+            Xdense = self.W_t.copy()
             for i in range(self.n_genes):
                 Xdense[:, i] = weights_transform(Xdense[:, i])
             weights = np.asarray(Xdense.sum(axis=1), dtype=self._dtype)
@@ -372,7 +373,6 @@ class LOCAT:
         self,
         n_comp=None,
         reps=10,
-        total_counts_weight=True,
         weights_transform=None,
         force_refresh=False,
     ):
@@ -393,7 +393,7 @@ class LOCAT:
                     logger.info(f"Using {n_comp} components")
 
             if weights_transform is not None:
-                Xdense = self.W.copy()
+                Xdense = self.W_t.copy()
                 for i in range(self.n_genes):
                     Xdense[:, i] = weights_transform(Xdense[:, i])
                 weights = np.asarray(Xdense.sum(axis=1), dtype=self._dtype)
@@ -545,10 +545,10 @@ class LOCAT:
         min_expected=30,
         min_abs_deficit=0.02,
         n_trials_cap=500,
-        weight_mode="amount",
+        weight_mode="binary",
         p_floor=1e-12,
-        n_eff_scale=1.0,
-        rho_bb=0.2,  # >0 enables Beta–Binomial tail
+        n_eff_scale=0.6,
+        rho_bb=0.02,  # >0 enables Beta–Binomial tail
         eps_rel=0.01,
         debug=False,
         debug_store_masks=False,
@@ -673,7 +673,7 @@ class LOCAT:
                 "obs_prop": None,
                 "scanned": int(scanned),
                 "tested": int(tested),
-                "sidak_penalty": 1,
+                "sidak_penalty": int(tested),
                 "n": n,
                 "n_eff_g": float(n_eff_g),
                 "n_trials_eff": int(n_trials_eff),
@@ -712,7 +712,7 @@ class LOCAT:
             "obs_prop": best["obs_prop"],
             "scanned": int(scanned),
             "tested": int(tested),
-            "sidak_penalty": 1,
+            "sidak_penalty": int(m_eff),
             "n": n,
             "n_eff_g": float(n_eff_g),
             "n_trials_eff": int(n_trials_eff),
@@ -863,7 +863,6 @@ class LOCAT:
                     "zscore": zscore,
                     "sens_score": sens_score,
                     "depletion_pval": depletion_pval,
-                    "localization_pval": depletion_pval,  # backward-compatible alias
                     "concentration_pval": concentration_pval,
                     "h_size": h_size,
                     "h_sens": h_sens,
@@ -893,7 +892,7 @@ class LOCAT:
         return inclgenes
 
     def get_gene_prior(self, i_gene, weights_transform):
-        gene_prior = self.W[:, i_gene]
+        gene_prior = self.W_t[:, i_gene]
         if weights_transform is not None:
             gene_prior = weights_transform(gene_prior)
         return gene_prior
@@ -937,7 +936,8 @@ class LOCAT:
         
                 f1 = self.signal_pdf(weights=gene_prior, n_comp=n_comp)
 
-                df = (bkg_df - n_comp) + 1
+                # Keep df in the valid chi-square domain in edge cases.
+                df = max(1, int((bkg_df - n_comp) + 1))
                 ix = gene_prior_gt0 & (f1 > 0)
                 if np.sum(ix) > 5:
                     ix = ix & bkg_pdf_gt0
