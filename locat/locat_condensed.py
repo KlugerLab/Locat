@@ -56,7 +56,7 @@ class LOCAT:
         adata: AnnData,
         cell_embedding: np.ndarray,
         k: int,
-        n_bootstrap_inits: int,
+        n_bootstrap_inits: int = 50,
         show_progress=False,
         wgmm_dtype: str = "same",  # "same" | "float32" | "float64"
         knn=None,                 # <-- NEW: precomputed adjacency/connectivities
@@ -752,17 +752,17 @@ class LOCAT:
         genes=None,
         weights_transform=None,
         zscore_thresh=None,
-        max_freq=0.5,
+        max_freq=0.9,
         verbose=False,
         n_bootstrap_inits=None,
         # Depletion-scan defaults
         rc_lambda_values=None,  # default inside method
         rc_min_p0_abs=0.10, #minimum proportion of f0 density in depleted region required for the region pval to be estimated
-        rc_min_expected=30, #minimum expected cells in depleted region required for the region pval to be estimated
+        rc_min_expected=3, #minimum expected cells in depleted region required for the region pval to be estimated
         rc_min_abs_deficit=0.04, #minimum absolute difference in f1(x) - f0(x) for all x in depleted region
-        rc_n_trials_cap=500, #maximum effective sample size
+        rc_n_trials_cap=None, #if None, defaults to sqrt(n_cells)
         rc_soft_bound=1.0, #this is unused/can be removed
-        rc_n_eff_scale=0.5, #scaling factor for effective sample sizes -- can be tweaked to stabilize pvalues across various gene sample sizes
+        rc_n_eff_scale=0.6, #scaling factor for effective sample sizes -- can be tweaked to stabilize pvalues across various gene sample sizes
         rc_p_floor=1e-12, # this is just model precision, can be ignored
         rc_rho_bb=0.02, #this is the strength of the beta binomial (0.0 is standard binomial, set at 0.02-0.05 for wider tails)
         rc_weight_mode="binary",
@@ -773,6 +773,11 @@ class LOCAT:
 
         if n_bootstrap_inits is not None:
             self.n_bootstrap_inits = int(n_bootstrap_inits)
+        rc_n_trials_cap_eff = (
+            int(max(1, np.sqrt(self.n_cells)))
+            if rc_n_trials_cap is None
+            else int(rc_n_trials_cap)
+        )
 
         locally_enriched = dict()
         gzeros, freqzeros, zzeros = [], [], []
@@ -834,7 +839,7 @@ class LOCAT:
                     min_p0_abs=rc_min_p0_abs,
                     min_expected=rc_min_expected,
                     min_abs_deficit=rc_min_abs_deficit,
-                    n_trials_cap=rc_n_trials_cap,
+                    n_trials_cap=rc_n_trials_cap_eff,
                     weight_mode=rc_weight_mode,
                     p_floor=rc_p_floor,
                     n_eff_scale=rc_n_eff_scale,
