@@ -1,4 +1,5 @@
 import math
+from typing import Callable
 
 import numba
 import numpy as np
@@ -11,6 +12,8 @@ from sklearn.metrics.pairwise import euclidean_distances as edist
 from tqdm import tqdm
 from sklearn.neighbors import NearestNeighbors
 from scipy.stats import norm
+
+from locat.locat_result import LocatResult
 from locat.wgmm import WGMM
 from locat.wgmms import wgmm
 from locat.rgmm import softbootstrap_gmm
@@ -36,7 +39,6 @@ class LOCATNullDistribution:
 
 class LOCAT:
     """
-
     The main LOCAT class
 
     """
@@ -57,12 +59,42 @@ class LOCAT:
         cell_embedding: np.ndarray,
         k: int,
         n_bootstrap_inits: int = 50,
-        show_progress=False,
-        wgmm_dtype: str = "same",  # "same" | "float32" | "float64"
-        knn=None,                 # <-- NEW: precomputed adjacency/connectivities
-        knn_k: int | None = None, # <-- NEW: if computing, how many neighbors (defaults to k)
-        knn_mode: str = "binary", # <-- NEW: "binary" or "connectivity"
+        show_progress: bool = False,
+        wgmm_dtype: str = "same",
+        knn=None,
+        knn_k: int | None = None,
+        knn_mode: str = "binary",
     ):
+        """
+        Create a Locat object
+
+        Parameters
+        ----------
+        adata: AnnData
+            The data in AnnData format, typically generated from Scanpy
+        cell_embedding: np.ndarray
+            The embedding to use in the analysis
+        k: int
+            The number of components to use in the GMM
+        n_bootstrap_inits: int, optional
+            The number of initializations used in bootstrapping (default:50)
+        show_progress: bool, optional
+            If True, shows progress bar (default: True)
+        wgmm_dtype: str, optional
+            The data type to use in the weighted GMM (default: same). Allowed values: "same", "float32" or "float64".
+        knn: np.ndarray, optional
+            K-nearest neighbor connectivities. Can be computed in a scanpy object by scanpy.pp.neighbors
+             and accessed from a scanpy object from `adata.obsp["connectivities"]`
+        knn_k: int, optional
+            The k parameter for computing k-nearest neighbors
+        knn_mode: KnnMode, optional
+            The mode to compute the K-nearest neighbors (default: "binary") "binary" or "connectivity"
+
+        See Also
+        ----------
+        scanpy.pp.neigbors
+
+        """
         self._disable_progress_info = not show_progress
         self._adata = adata
 
@@ -78,7 +110,7 @@ class LOCAT:
         self.n_bootstrap_inits = n_bootstrap_inits
         self._knn = None
         self._knn_k = int(knn_k) if knn_k is not None else int(k)
-        self._knn_mode = str(knn_mode)
+        self._knn_mode = knn_mode
 
         self._reg_covar = None
         if knn is not None:
@@ -749,27 +781,75 @@ class LOCAT:
 
     def gmm_scan_new(
         self,
-        genes=None,
-        weights_transform=None,
-        zscore_thresh=None,
-        max_freq=0.9,
-        verbose=False,
-        n_bootstrap_inits=None,
-        # Depletion-scan defaults
-        rc_lambda_values=None,  # default inside method
-        rc_min_p0_abs=0.10, #minimum proportion of f0 density in depleted region required for the region pval to be estimated
-        rc_min_expected=3, #minimum expected cells in depleted region required for the region pval to be estimated
-        rc_min_abs_deficit=0.04, #minimum absolute difference in f1(x) - f0(x) for all x in depleted region
-        rc_n_trials_cap=None, #if None, defaults to sqrt(n_cells)
-        rc_soft_bound=1.0, #this is unused/can be removed
-        rc_n_eff_scale=0.6, #scaling factor for effective sample sizes -- can be tweaked to stabilize pvalues across various gene sample sizes
-        rc_p_floor=1e-12, # this is just model precision, can be ignored
-        rc_rho_bb=0.02, #this is the strength of the beta binomial (0.0 is standard binomial, set at 0.02-0.05 for wider tails)
-        rc_weight_mode="binary",
-        rc_eps_rel=0.01,
-    ):
+        genes: list[str] | None = None,
+        weights_transform: Callable | None =None,
+        zscore_thresh: float =None,
+        max_freq: float = 0.9,
+        verbose: bool =False,
+        n_bootstrap_inits: int =None,
+        rc_lambda_values: list| None = None,
+        rc_min_p0_abs: float = 0.10,
+        rc_min_expected: int = 3,
+        rc_min_abs_deficit: float = 0.04,
+        rc_soft_bound: float = 1e-12,
+        rc_n_trials_cap: float = None,
+        rc_n_eff_scale: float =0.6,
+        rc_p_floor:float = 1e-12,
+        rc_rho_bb: float = 0.02,
+        rc_weight_mode: str = "binary",
+        rc_eps_rel: float = 0.01,
+        include_depletion_scan: bool = False,
+    ) -> dict[str, LocatResult]:
+        """
+
+
+        Parameters
+        ----------
+        genes: list[str] | None, optional
+            If specified, only analyze the given list of genes
+        weights_transform: Callable, optional
+            If specified, call this function to normalize the data
+        zscore_thresh: float, optional
+            The z_score threshold to use when keeping localized genes
+        max_freq: float, optional
+            The maximum fraction of cells allowed to express the gene
+        verbose: bool, optional
+            If True, prints to the standard output
+        n_bootstrap_inits: int, optional
+            The number of initializations used in bootstrapping (default:50)
+        rc_lambda_values: list[float], optional
+            If not specified, a default is used
+        rc_min_p0_abs: float, optional
+            The minimum proportion of f0 density in depleted region required for the region pval to be estimated
+        rc_min_expected: int, optional
+            The minimum expected cells in depleted region required for the region pval to be estimated
+        rc_min_abs_deficit: float, optional
+            The minimum absolute difference in f1(x) - f0(x) for all x in depleted region
+        rc_soft_bound: float, optional
+            The minimum value allowed for pvals
+        rc_n_trials_cap: float, optional
+            If None, defaults to sqrt(n_cells)
+        rc_n_eff_scale: float, optional
+            The scaling factor for effective sample sizes -- can be tweaked to stabilize pvals across various gene sample sizes
+        rc_p_floor: float, optional
+            The minimum p-value to use (default: 1e-12)
+        rc_rho_bb: float, optional
+            The strength of the beta binomial (0.0 is standard binomial, set at 0.02-0.05 for wider tails, default: 0.02)
+        rc_weight_mode: str, optional
+            The mode to compute the K-nearest neighbors (default: "binary") "binary" or "connectivity"
+        rc_eps_rel: float, optional
+            The rc_eps_rel
+        include_depletion_scan: bool, optional
+            If True, If True, adds the depletion scan to the output for debugging purposes
+
+        Returns
+        -------
+        dict[str, LocatResult]
+            A dictionary containing the LocatResult for each gene
+
+        """
         if verbose:
-            print("gmm_scan_new: using depletion scan for depletion_pval (depletion_pval_scan)")
+            logger.info("gmm_scan_new: using depletion scan for depletion_pval (depletion_pval_scan)")
 
         if n_bootstrap_inits is not None:
             self.n_bootstrap_inits = int(n_bootstrap_inits)
@@ -858,27 +938,30 @@ class LOCAT:
                 )
                 p_final = float(smooth_qvals(np.array([_safe_p(p_final)]))[0])
 
-                locally_enriched[self._adata.var_names[i_gene]] = {
-                    "bic": self.bic_score(gmm1, gene_prior),
-                    "zscore": zscore,
-                    "sens_score": sens_score,
-                    "depletion_pval": depletion_pval,
-                    "concentration_pval": concentration_pval,
-                    "h_size": h_size,
-                    "h_sens": h_sens,
-                    "pval": p_final,
-                    "K_components": n_comp,
-                    "sample_size": sample_size,
-                    "depletion_scan": cs_res,
-                    "depl_scan": cs_res,
-                }
+                i_result = LocatResult(
+                    gene_name=self._adata.var_names[i_gene],
+                    bic=self.bic_score(gmm1, gene_prior),
+                    zscore=zscore,
+                    sens_score=sens_score,
+                    depletion_pval=depletion_pval,
+                    concentration_pval=concentration_pval,
+                    h_size=h_size,
+                    h_sens=h_sens,
+                    pval=p_final,
+                    K_components=n_comp,
+                    sample_size=sample_size,
+                )
+                if include_depletion_scan:
+                    i_result.depletion_scan = cs_res
+
+                locally_enriched[i_result.gene_name] = i_result
 
             except ValueError as e:
                 if verbose:
                     logger.info(e)
 
         if verbose:
-            print("gzeros:", len(gzeros), "freqzeros:", len(freqzeros), "zzeros:", len(zzeros))
+            logger.info("gzeros:", len(gzeros), "freqzeros:", len(freqzeros), "zzeros:", len(zzeros))
         return locally_enriched
 
     # ------------------------------------------------------------------
