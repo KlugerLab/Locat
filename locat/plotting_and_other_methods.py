@@ -267,7 +267,7 @@ def plot_gene_localization_summary(
                 f"{gene}\nLocalized: {loc_mask.sum()} | "
                 f"Unloc: {unloc_mask.sum()} | "
                 f"ExpUnloc: {rec.get('expected_unlocalized', np.nan):.1f}\n"
-                f"LocPval: {rec['localization_pval']:.2e}"
+                f"DepPval: {rec['depletion_pval']:.2e}"
             ),
             fontsize=11
         )
@@ -347,7 +347,7 @@ def plotgenes(
                 f"{gene}\n"
                 f"pval: {d0.loc[gene]['pval']:.2e}\n"
                 f"conc_pval: {d0.loc[gene]['concentration_pval']:.2e}\n"
-                f"loca_pval: {d0.loc[gene]['localization_pval']:.2e}",
+                f"dep_pval: {d0.loc[gene]['depletion_pval']:.2e}",
                 fontsize=text_size,
                 pad=10
             )
@@ -380,4 +380,3 @@ def plotgenes(
     plt.tight_layout()
     fig.subplots_adjust(hspace=0.4)
     plt.show()
-
