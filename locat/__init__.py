@@ -1,7 +1,7 @@
 """
     The ``locat`` package provides the implementation of Locat.
 
-    The main class is found under locat_condensed.LOCAT
+    The main class is found under locat.LOCAT
 """
 
 # Get the version from _version.py (added when building using scm)
