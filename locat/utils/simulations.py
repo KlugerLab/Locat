@@ -1,6 +1,7 @@
 import anndata as ad
 import numpy as np
 import scanpy as sc
+from anndata import AnnData
 from sklearn.datasets import make_blobs
 
 
@@ -11,7 +12,11 @@ def create_anndata(matrix, cell_names=None, gene_names=None):
     return adata
 
 
-def simulate_blob_data(n_samples:int = 5000, n_tests:int = 200):
+def simulate_blob_data(
+        n_samples:int = 5000,
+        n_tests:int = 200,
+        n_total = 50,
+) -> AnnData:
     coords, clusts, centers = make_blobs(
         n_samples=[n_samples],
         n_features=2,
@@ -27,7 +32,6 @@ def simulate_blob_data(n_samples:int = 5000, n_tests:int = 200):
     # Fixed radius, vary in/out fraction
     # ----------------------------
     radius0 = 0.5  # <-- FIXED radius
-    n_total = 50  # total expressing cells per gene (constant)
     fractions_in = np.linspace(1.0, 0.5, n_tests)  # 1.0 => all inside, 0.0 => all outside
 
     # precompute in/out sets for the fixed radius
