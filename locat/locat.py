@@ -779,7 +779,7 @@ class LOCAT:
         )
         return bic / n_cells
 
-    def gmm_scan_new(
+    def gmm_scan(
         self,
         genes: list[str] | None = None,
         weights_transform: Callable | None =None,
@@ -950,10 +950,8 @@ class LOCAT:
                     pval=p_final,
                     K_components=n_comp,
                     sample_size=sample_size,
+                    depletion_scan=cs_res if include_depletion_scan else None,
                 )
-                if include_depletion_scan:
-                    i_result.depletion_scan = cs_res
-
                 locally_enriched[i_result.gene_name] = i_result
 
             except ValueError as e:
