@@ -792,7 +792,7 @@ class LOCAT:
         rc_min_expected: int = 3,
         rc_min_abs_deficit: float = 0.04,
         rc_n_trials_cap: float = None,
-        rc_soft_bound: float = 1e-12,
+        rc_soft_bound: float = 1.0,
         rc_n_eff_scale: float =0.6,
         rc_p_floor:float = 1e-12,
         rc_rho_bb: float = 0.02,
