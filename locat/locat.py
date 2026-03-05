@@ -1,4 +1,5 @@
 import math
+from typing import Callable
 
 import numba
 import numpy as np
@@ -11,6 +12,8 @@ from sklearn.metrics.pairwise import euclidean_distances as edist
 from tqdm import tqdm
 from sklearn.neighbors import NearestNeighbors
 from scipy.stats import norm
+
+from locat.locat_result import LocatResult
 from locat.wgmm import WGMM
 from locat.wgmms import wgmm
 from locat.rgmm import softbootstrap_gmm
@@ -36,7 +39,6 @@ class LOCATNullDistribution:
 
 class LOCAT:
     """
-
     The main LOCAT class
 
     """
@@ -57,12 +59,42 @@ class LOCAT:
         cell_embedding: np.ndarray,
         k: int,
         n_bootstrap_inits: int = 50,
-        show_progress=False,
-        wgmm_dtype: str = "same",  # "same" | "float32" | "float64"
-        knn=None,                 # <-- NEW: precomputed adjacency/connectivities
-        knn_k: int | None = None, # <-- NEW: if computing, how many neighbors (defaults to k)
-        knn_mode: str = "binary", # <-- NEW: "binary" or "connectivity"
+        show_progress: bool = False,
+        wgmm_dtype: str = "same",
+        knn=None,
+        knn_k: int | None = None,
+        knn_mode: str = "binary",
     ):
+        """
+        Create a Locat object
+
+        Parameters
+        ----------
+        adata: AnnData
+            The data in AnnData format, typically generated from Scanpy
+        cell_embedding: np.ndarray
+            The embedding to use in the analysis
+        k: int
+            The number of components to use in the GMM
+        n_bootstrap_inits: int, optional
+            The number of initializations used in bootstrapping (default:50)
+        show_progress: bool, optional
+            If True, shows progress bar (default: True)
+        wgmm_dtype: str, optional
+            The data type to use in the weighted GMM (default: same). Allowed values: "same", "float32" or "float64".
+        knn: np.ndarray, optional
+            K-nearest neighbor connectivities. Can be computed in a scanpy object by scanpy.pp.neighbors
+             and accessed from a scanpy object from `adata.obsp["connectivities"]`
+        knn_k: int, optional
+            The k parameter for computing k-nearest neighbors
+        knn_mode: KnnMode, optional
+            The mode to compute the K-nearest neighbors (default: "binary") "binary" or "connectivity"
+
+        See Also
+        ----------
+        scanpy.pp.neigbors
+
+        """
         self._disable_progress_info = not show_progress
         self._adata = adata
 
@@ -78,7 +110,7 @@ class LOCAT:
         self.n_bootstrap_inits = n_bootstrap_inits
         self._knn = None
         self._knn_k = int(knn_k) if knn_k is not None else int(k)
-        self._knn_mode = str(knn_mode)
+        self._knn_mode = knn_mode
 
         self._reg_covar = None
         if knn is not None:
@@ -302,21 +334,21 @@ class LOCAT:
     def set_knn(self, knn):
         """
         Store a precomputed KNN graph.
-    
+
         Accepts:
           - scipy sparse (csr/csc/coo) adjacency or connectivities
           - dense numpy array adjacency/connectivities
-    
+
         Expected shape: (n_cells, n_cells)
         """
         if sp.issparse(knn):
             K = knn.tocsr()
         else:
             K = np.asarray(knn)
-    
+
         if K.shape != (self.n_cells, self.n_cells):
             raise ValueError(f"knn must have shape {(self.n_cells, self.n_cells)}, got {K.shape}")
-    
+
         # zero diagonal to avoid self-neighbor artifacts
         if sp.issparse(K):
             K = K.tolil()
@@ -325,35 +357,35 @@ class LOCAT:
             K.eliminate_zeros()
         else:
             np.fill_diagonal(K, 0.0)
-    
+
         self._knn = K
-    
-    
+
+
     def knn(self):
         """
         Return a KNN adjacency/connectivity matrix.
-    
+
         If a KNN was provided at init (or via set_knn), returns it.
         Otherwise computes one from the embedding.
         """
         if self._knn is not None:
             return self._knn
-    
+
         k = int(self._knn_k)
         if k <= 0:
             raise ValueError("knn_k must be >= 1")
-    
+
         # Build kNN from embedding (exclude self by taking k+1 then dropping self)
         nbrs = NearestNeighbors(n_neighbors=min(k + 1, self.n_cells), metric="euclidean")
         nbrs.fit(self._embedding)
         dists, inds = nbrs.kneighbors(self._embedding, return_distance=True)
-    
+
         # Drop self neighbor (usually first column)
         inds = inds[:, 1: k + 1]
-    
+
         rows = np.repeat(np.arange(self.n_cells), inds.shape[1])
         cols = inds.reshape(-1)
-    
+
         if self._knn_mode == "binary":
             data = np.ones_like(cols, dtype=self._dtype)
         elif self._knn_mode == "connectivity":
@@ -362,7 +394,7 @@ class LOCAT:
             data = (1.0 / (dd + 1e-6)).astype(self._dtype, copy=False)
         else:
             raise ValueError("knn_mode must be 'binary' or 'connectivity'")
-    
+
         K = sp.csr_matrix((data, (rows, cols)), shape=(self.n_cells, self.n_cells))
         K.eliminate_zeros()
         self._knn = K
@@ -747,29 +779,77 @@ class LOCAT:
         )
         return bic / n_cells
 
-    def gmm_scan_new(
+    def gmm_scan(
         self,
-        genes=None,
-        weights_transform=None,
-        zscore_thresh=None,
-        max_freq=0.9,
-        verbose=False,
-        n_bootstrap_inits=None,
-        # Depletion-scan defaults
-        rc_lambda_values=None,  # default inside method
-        rc_min_p0_abs=0.10, #minimum proportion of f0 density in depleted region required for the region pval to be estimated
-        rc_min_expected=3, #minimum expected cells in depleted region required for the region pval to be estimated
-        rc_min_abs_deficit=0.04, #minimum absolute difference in f1(x) - f0(x) for all x in depleted region
-        rc_n_trials_cap=None, #if None, defaults to sqrt(n_cells)
-        rc_soft_bound=1.0, #this is unused/can be removed
-        rc_n_eff_scale=0.6, #scaling factor for effective sample sizes -- can be tweaked to stabilize pvalues across various gene sample sizes
-        rc_p_floor=1e-12, # this is just model precision, can be ignored
-        rc_rho_bb=0.02, #this is the strength of the beta binomial (0.0 is standard binomial, set at 0.02-0.05 for wider tails)
-        rc_weight_mode="binary",
-        rc_eps_rel=0.01,
-    ):
+        genes: list[str] | None = None,
+        weights_transform: Callable | None =None,
+        zscore_thresh: float =None,
+        max_freq: float = 0.9,
+        verbose: bool =False,
+        n_bootstrap_inits: int =None,
+        rc_lambda_values: list| None = None,
+        rc_min_p0_abs: float = 0.10,
+        rc_min_expected: int = 3,
+        rc_min_abs_deficit: float = 0.04,
+        rc_n_trials_cap: float = None,
+        rc_soft_bound: float = 1.0,
+        rc_n_eff_scale: float =0.6,
+        rc_p_floor:float = 1e-12,
+        rc_rho_bb: float = 0.02,
+        rc_weight_mode: str = "binary",
+        rc_eps_rel: float = 0.01,
+        include_depletion_scan: bool = False,
+    ) -> dict[str, LocatResult]:
+        """
+
+
+        Parameters
+        ----------
+        genes: list[str] | None, optional
+            If specified, only analyze the given list of genes
+        weights_transform: Callable, optional
+            If specified, call this function to normalize the data
+        zscore_thresh: float, optional
+            The z_score threshold to use when keeping localized genes
+        max_freq: float, optional
+            The maximum fraction of cells allowed to express the gene
+        verbose: bool, optional
+            If True, prints to the standard output
+        n_bootstrap_inits: int, optional
+            The number of initializations used in bootstrapping (default:50)
+        rc_lambda_values: list[float], optional
+            If not specified, a default is used
+        rc_min_p0_abs: float, optional
+            The minimum proportion of f0 density in depleted region required for the region pval to be estimated
+        rc_min_expected: int, optional
+            The minimum expected cells in depleted region required for the region pval to be estimated
+        rc_min_abs_deficit: float, optional
+            The minimum absolute difference in f1(x) - f0(x) for all x in depleted region
+        rc_n_trials_cap: float, optional
+            If None, defaults to sqrt(n_cells)
+        rc_soft_bound: float, optional
+            The minimum value allowed for pvals
+        rc_n_eff_scale: float, optional
+            The scaling factor for effective sample sizes -- can be tweaked to stabilize pvals across various gene sample sizes
+        rc_p_floor: float, optional
+            The minimum p-value to use (default: 1e-12)
+        rc_rho_bb: float, optional
+            The strength of the beta binomial (0.0 is standard binomial, set at 0.02-0.05 for wider tails, default: 0.02)
+        rc_weight_mode: str, optional
+            The mode to compute the K-nearest neighbors (default: "binary") "binary" or "connectivity"
+        rc_eps_rel: float, optional
+            The rc_eps_rel
+        include_depletion_scan: bool, optional
+            If True, If True, adds the depletion scan to the output for debugging purposes
+
+        Returns
+        -------
+        dict[str, LocatResult]
+            A dictionary containing the LocatResult for each gene
+
+        """
         if verbose:
-            print("gmm_scan_new: using depletion scan for depletion_pval (depletion_pval_scan)")
+            logger.info("gmm_scan_new: using depletion scan for depletion_pval (depletion_pval_scan)")
 
         if n_bootstrap_inits is not None:
             self.n_bootstrap_inits = int(n_bootstrap_inits)
@@ -858,27 +938,28 @@ class LOCAT:
                 )
                 p_final = float(smooth_qvals(np.array([_safe_p(p_final)]))[0])
 
-                locally_enriched[self._adata.var_names[i_gene]] = {
-                    "bic": self.bic_score(gmm1, gene_prior),
-                    "zscore": zscore,
-                    "sens_score": sens_score,
-                    "depletion_pval": depletion_pval,
-                    "concentration_pval": concentration_pval,
-                    "h_size": h_size,
-                    "h_sens": h_sens,
-                    "pval": p_final,
-                    "K_components": n_comp,
-                    "sample_size": sample_size,
-                    "depletion_scan": cs_res,
-                    "depl_scan": cs_res,
-                }
+                i_result = LocatResult(
+                    gene_name=self._adata.var_names[i_gene],
+                    bic=self.bic_score(gmm1, gene_prior),
+                    zscore=zscore,
+                    sens_score=sens_score,
+                    depletion_pval=depletion_pval,
+                    concentration_pval=concentration_pval,
+                    h_size=h_size,
+                    h_sens=h_sens,
+                    pval=p_final,
+                    K_components=n_comp,
+                    sample_size=sample_size,
+                    depletion_scan=cs_res if include_depletion_scan else None,
+                )
+                locally_enriched[i_result.gene_name] = i_result
 
             except ValueError as e:
                 if verbose:
                     logger.info(e)
 
         if verbose:
-            print("gzeros:", len(gzeros), "freqzeros:", len(freqzeros), "zzeros:", len(zzeros))
+            logger.info("gzeros:", len(gzeros), "freqzeros:", len(freqzeros), "zzeros:", len(zzeros))
         return locally_enriched
 
     # ------------------------------------------------------------------
@@ -896,7 +977,7 @@ class LOCAT:
         if weights_transform is not None:
             gene_prior = weights_transform(gene_prior)
         return gene_prior
-    
+
     def signal_pdf(self, weights, n_comp=None):
         gmm = self.signal_gmm(weights=weights, n_comp=n_comp, )
         return gmm.pdf(self._embedding)
@@ -932,8 +1013,8 @@ class LOCAT:
                         gene_prior[loc_indices],
                         indices=loc_indices,  # <-- required
                     )
-                
-        
+
+
                 f1 = self.signal_pdf(weights=gene_prior, n_comp=n_comp)
 
                 # Keep df in the valid chi-square domain in edge cases.
@@ -974,10 +1055,10 @@ class LOCAT:
         from sklearn.metrics import roc_curve
         import scipy.sparse as sp
         import numpy as np
-    
+
         f0 = np.asarray(self.background_pdf(weights_transform=weights_transform), dtype=self._dtype).ravel()
         K = self.knn()
-    
+
         # Optional: row-normalize K so every cell has comparable neighborhood "mass"
         if normalize_knn:
             if sp.issparse(K):
@@ -989,10 +1070,10 @@ class LOCAT:
                 Kuse = K / np.maximum(deg[:, None], eps)
         else:
             Kuse = K
-    
+
         locally_enriched = {}
         inclgenes = self.get_genes_indices(genes)
-    
+
         for i_gene in tqdm(
             inclgenes,
             desc="scanning genes",
@@ -1002,32 +1083,32 @@ class LOCAT:
         ):
             gene_prior = self.get_gene_prior(i_gene, weights_transform)
             gp = np.asarray(gene_prior, dtype=self._dtype).ravel()
-    
+
             sw = float(gp.sum())
             if sw <= 0:
                 continue  # or store null result if you prefer
-    
+
             # signal pdf + LTST
             f1 = np.asarray(self.signal_pdf(weights=gp, n_comp=n_comp), dtype=self._dtype).ravel()
             p = float(np.mean(gp > 0))
             ltst_score = ltst_score_func(f0, f1, p)  # (n_cells,)
-    
+
             zscore = float(np.dot(gp, ltst_score) / sw)
-    
+
             # random pseudo-genes (must return f2: (n_cells, n_inits), rweights: (n_cells, n_inits))
             f2, rweights = self.random_pdf(weights=gp, n_comp=n_comp, n_inits=n_inits)
             f2 = np.asarray(f2, dtype=self._dtype)
             rweights = np.asarray(rweights, dtype=self._dtype)
-    
+
             # p2 is per-init expression fraction
             p2 = np.mean(rweights > 0, axis=0).astype(self._dtype, copy=False)  # (n_inits,)
-    
+
             ltst_score2 = ltst_score_func(f0[:, None], f2, p2)  # (n_cells, n_inits)
-    
+
             # empirical zscore p-value (avoid 0/1 extremes)
             z2 = (np.sum(rweights * ltst_score2, axis=0) / sw).astype(np.float64)  # (n_inits,)
             z_p = (1.0 + np.sum(z2 >= zscore)) / (n_inits + 1.0)
-    
+
             # neighborhood-smoothed statistics
             if sp.issparse(Kuse):
                 wstat1 = np.asarray(Kuse.dot(ltst_score)).ravel()
@@ -1035,23 +1116,23 @@ class LOCAT:
             else:
                 wstat1 = (Kuse @ ltst_score).ravel()
                 wstat2 = (Kuse @ ltst_score2)
-    
+
             # empirical p-values per cell: rank among [wstat1, wstat2...]
             # shape: (n_cells, n_inits+1)
             M = np.concatenate([wstat1[:, None], wstat2], axis=1)
             ranks = rankdata(-M, axis=1, method="average")[:, 0]  # rank of observed in each row
             emp_p = ranks / (n_inits + 1.0)  # in (0,1]
-    
+
             # pick a cutoff from ROC if there is signal
             empirical_h1 = emp_p < (alpha / self.n_cells)
-    
+
             wstat1_cutoff = 0.0
             if np.any(empirical_h1) and np.any(~empirical_h1):
                 fpr, tpr, cuts = roc_curve(empirical_h1.astype(int), wstat1)
                 # maximize balanced accuracy ( (tpr + (1-fpr)) / 2 )
                 j = np.argmax(((1 - fpr) + tpr) / 2.0)
                 wstat1_cutoff = float(cuts[j])
-    
+
             local_res = {
                 "wstat_cutoff": wstat1_cutoff,
                 "wstat_alpha": float(alpha),
@@ -1060,16 +1141,16 @@ class LOCAT:
                 "zscore_pvalue": float(z_p),
                 "wstat_repetitions": int(n_inits),
             }
-    
+
             sig_idx = np.flatnonzero(wstat1 > wstat1_cutoff)
             local_res["wstat_significant"] = sig_idx if sig_idx.size else None
             local_res["wstat_significant_clusters"] = None  # placeholder
-    
+
             locally_enriched[self._adata.var_names[i_gene]] = local_res
-    
+
         return locally_enriched
 
-    
+
     def gmm_local_scan(self,
                        genes=None,
                        weights_transform=None,
@@ -1080,7 +1161,7 @@ class LOCAT:
         if zscore_thresh is None:
             zscore_thresh = 1.0
         K = self.knn()
-        
+
         if sp.issparse(K):
             knn_neis = np.asarray(K.sum(axis=1)).ravel()
             inv = 1.0 / np.maximum(knn_neis, 1e-12)
@@ -1118,7 +1199,7 @@ class LOCAT:
 
                 f1 = self.signal_pdf(weights=gene_prior, n_comp=n_comp)
                 expr = (gene_prior > 0).astype(self._dtype, copy=False)
-                
+
                 # p1 = local expression fraction around each cell
                 if sp.issparse(knn_norm):
                     p1 = knn_norm.dot(expr)
@@ -1132,7 +1213,7 @@ class LOCAT:
                     np.asarray(f1, dtype=self._dtype),
                     p1,
                 )
-                
+
                 if sp.issparse(knn_norm):
                     local_zscore = knn_norm.dot(ltst)
                 else:
@@ -1140,22 +1221,22 @@ class LOCAT:
                 local_zscore = np.asarray(local_zscore, dtype=self._dtype).ravel()
 
                 local_zscore = self._null_distribution.to_zscore(local_zscore, p1)
-                
+
                 K = self.knn()
                 expr_mask = (gene_prior > 0).astype(np.float32)           # (n,)
                 sig_mask  = (f1 > f0).astype(np.float32)                 # (n,)
-                
+
                 if sp.issparse(K):
                     expr_neighbors = K.dot(expr_mask)                    # how many expressing neighbors (weighted)
                     sig_expr_neighbors = K.dot(expr_mask * sig_mask)     # how many expressing-and-signal neighbors
                 else:
                     expr_neighbors = K @ expr_mask
                     sig_expr_neighbors = K @ (expr_mask * sig_mask)
-                
+
                 local_lscore = sig_expr_neighbors / np.maximum(expr_neighbors, 1e-12)
                 local_lscore = np.asarray(local_lscore).ravel()
-                
-                                
+
+
                 # rate
                 # local_zscore = local_zscore * knn_neis / self.n_cells
                 assert K.shape == (self.n_cells, self.n_cells), (K.shape, self.n_cells)
@@ -1195,10 +1276,10 @@ class LOCAT:
         f1 = np.asarray(f1).ravel()
         ix = np.asarray(ix, dtype=bool).ravel()
         log_bkg_pdf = np.asarray(log_bkg_pdf).ravel()
-    
+
         # log f1 safely (no mutation)
         log_f1 = np.log(np.clip(f1, eps, np.inf))
-    
+
         denom = float(sample_size) if sample_size > 0 else 1.0
         return float((-2.0 * np.sum((log_bkg_pdf[ix] - log_f1[ix])) ) / denom)
 
@@ -1211,9 +1292,9 @@ class LOCAT:
     ):
         import numpy as np
         from scipy.stats import multivariate_normal as mnorm  # <-- add back
-    
+
         weights = np.asarray(weights, dtype=self._dtype).ravel()
-    
+
         if n_comp is None:
             comp_weights = self._auto_n_effective_weights(weights)
             if comp_weights is None:
@@ -1225,7 +1306,7 @@ class LOCAT:
                     weights[loc_indices],
                     indices=loc_indices,          # <-- IMPORTANT
                 )
-    
+
         pis, mus, sigmas, rweights = softbootstrap_gmm(
             self._embedding,
             raw_weights=weights,
@@ -1234,14 +1315,14 @@ class LOCAT:
             n_inits=n_inits,
             buckets=buckets,
         )
-    
+
         pis = np.asarray(pis)
         mus = np.asarray(mus)
         sigmas = np.asarray(sigmas)
         rweights = np.asarray(rweights)
-    
+
         dtot = np.zeros((self.n_cells, n_inits), dtype=np.float64)
-    
+
         # NOTE: this loop is slow but correct; optimize later if needed
         for j in range(n_inits):
             for i in range(n_comp):
@@ -1250,7 +1331,7 @@ class LOCAT:
                     continue
                 c0 = mnorm(mean=mus[j, i], cov=sigmas[j, i], allow_singular=True)
                 dtot[:, j] += w * c0.pdf(self._embedding)
-    
+
         return dtot.astype(self._dtype, copy=False), rweights.astype(self._dtype, copy=False)
 
 
@@ -1341,7 +1422,7 @@ def localization_pvalue_nn_func(x1, f1, f0, nn):
 
     return p
 
-    
+
 @numba.njit
 def normal_sf(x, mu, sigma):
     """

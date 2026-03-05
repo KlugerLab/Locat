@@ -12,5 +12,5 @@ Submodules
 .. toctree::
    :maxdepth: 4
 
-   locat.locat_condensed
-   locat.wgmm
+   locat.locat
+   locat.locat_result

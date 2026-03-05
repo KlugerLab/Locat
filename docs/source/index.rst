@@ -13,7 +13,7 @@ Pages
 
    self
    examples
-   reference/locat
+   reference/modules
 
 
 Indices and tables
