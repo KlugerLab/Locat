@@ -86,7 +86,7 @@ class LOCAT:
             The data type to use in the weighted GMM (default: same). Allowed values: "same", "float32" or "float64".
         knn: np.ndarray, optional
             K-nearest neighbor connectivities. Can be computed in a scanpy object by scanpy.pp.neighbors
-             and accessed from a scanpy object from `adata.obsp["connectivities"]`
+            and accessed from a scanpy object from `adata.obsp["connectivities"]`
         knn_k: int, optional
             The k parameter for computing k-nearest neighbors
         knn_mode: KnnMode, optional
