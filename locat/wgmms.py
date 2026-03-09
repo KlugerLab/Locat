@@ -1,23 +1,12 @@
 from functools import partial
-
+import numpy as np
+from sklearn.cluster import kmeans_plusplus
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
-import numpy as np
-import tensorflow_probability.substrates.jax as jaxp
-
-#from jax.config import config as jax_config
-
-from concurrent.futures import ThreadPoolExecutor
+import tensorflow_probability.substrates.jax.distributions as jaxd
 
 jax.config.update("jax_enable_x64", True)
-
-from sklearn.cluster import kmeans_plusplus
-from loguru import logger
-
-for d in jax.local_devices():
-    logger.info(f'Found device: {d}')
-jaxd = jaxp.distributions
 
 
 def _weighted_kmeans_init(X, w, n_c, n_inits):
