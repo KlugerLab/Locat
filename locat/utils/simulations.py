@@ -13,9 +13,10 @@ def create_anndata(matrix, cell_names=None, gene_names=None):
 
 
 def simulate_blob_data(
-        n_samples:int = 5000,
-        n_tests:int = 200,
-        n_total = 50,
+        n_samples: int = 5000,
+        n_tests: int = 200,
+        n_total: int = 50,
+        seed: int = 0,
 ) -> AnnData:
     coords, clusts, centers = make_blobs(
         n_samples=[n_samples],
@@ -26,7 +27,7 @@ def simulate_blob_data(
         cluster_std=[1.]
     )
 
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(seed)
 
     # ----------------------------
     # Fixed radius, vary in/out fraction

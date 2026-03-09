@@ -4,6 +4,7 @@ from typing import Callable
 import numba
 import numpy as np
 from loguru import logger
+from numpy.random import Generator
 from scanpy import AnnData
 from scipy.interpolate import PchipInterpolator
 from scipy.special import logsumexp
@@ -52,6 +53,7 @@ class LOCAT:
     _X = None
     _n_components_waypoints = None
     _disable_progress_info = True
+    _rng: Generator = None
 
     def __init__(
         self,
@@ -97,7 +99,7 @@ class LOCAT:
         """
         self._disable_progress_info = not show_progress
         self._adata = adata
-
+        self.init_rng()
         emb = np.asarray(cell_embedding)
         emb = (emb - emb.mean(0)) / (emb.std(0) + emb.dtype.type(1e-6))
         self._embedding = emb
@@ -175,6 +177,18 @@ class LOCAT:
     def show_progress(self, show_progress=True):
         self._disable_progress_info = not show_progress
 
+    def init_rng(self, seed: int = 0):
+        """
+        Initialized the random number generator.
+
+        Parameters
+        ----------
+        seed: int, optional
+            The seed to use
+
+        """
+        self._rng = np.random.default_rng(seed)
+
     # ------------------------------------------------------------------
     # Background GMM and LTST null
     # ------------------------------------------------------------------
@@ -238,7 +252,7 @@ class LOCAT:
         o = np.arange(self.n_cells)
         wgs = np.zeros(shape=(self.n_cells, n_reps))
         for i_rep in range(n_reps):
-            np.random.shuffle(o)
+            self._rng.shuffle(o)
             wgs[o < n, i_rep] = weights[o < n]
         wgs = wgs / np.sum(wgs, axis=0)
 
@@ -522,7 +536,7 @@ class LOCAT:
 
             for _ in range(n_reps):
                 mask = np.zeros(self.n_cells, dtype=bool)
-                mask[np.random.choice(self.n_cells, n_pos, replace=False)] = True
+                mask[self._rng.choice(self.n_cells, n_pos, replace=False)] = True
                 gene_prior = mask.astype(self._dtype)
 
                 comp_gene_prior = self._auto_n_effective_weights(gene_prior)
@@ -801,7 +815,7 @@ class LOCAT:
         include_depletion_scan: bool = False,
     ) -> dict[str, LocatResult]:
         """
-
+        Runs Locat and identifies Localized genes
 
         Parameters
         ----------
@@ -849,8 +863,9 @@ class LOCAT:
 
         """
         if verbose:
-            logger.info("gmm_scan_new: using depletion scan for depletion_pval (depletion_pval_scan)")
+            logger.info("gmm_scan: using depletion scan for depletion_pval (depletion_pval_scan)")
 
+        self.init_rng()
         if n_bootstrap_inits is not None:
             self.n_bootstrap_inits = int(n_bootstrap_inits)
         rc_n_trials_cap_eff = (
@@ -1338,13 +1353,13 @@ class LOCAT:
 # ----------------------------------------------------------------------
 # JIT-accelerated scoring helpers
 # ----------------------------------------------------------------------
-@numba.jit(nopython=True)
+@numba.njit()
 def ltst_score_func(f0, f1, p):
     q = np.sqrt(p)
     return (q * (1 - q)) * (f1 - f0) / (f1 + f0)
 
 
-@numba.jit(nopython=True)
+@numba.njit()
 def sens_score_func(f0, f1, i):
     return np.mean(f1[i > 0] > f0[i > 0])
 

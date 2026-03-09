@@ -1,18 +1,12 @@
 from functools import partial
 import numpy as np
+from sklearn.cluster import kmeans_plusplus
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
-import tensorflow_probability.substrates.jax as jaxp
+import tensorflow_probability.substrates.jax.distributions as jaxd
 
 jax.config.update("jax_enable_x64", True)
-
-from sklearn.cluster import kmeans_plusplus
-from loguru import logger
-
-for d in jax.local_devices():
-    logger.info(f'Found device: {d}')
-jaxd = jaxp.distributions
 
 
 def _weighted_kmeans_init(X, w, n_c, n_inits):
@@ -134,7 +128,7 @@ def softbootstrap_gmm(X, raw_weights, n_components, n_inits=100, reg_covar=0.0, 
     rand_weights = rand_weights[o_back,:]
 
     n = rand_weights.shape[0]
-    boot_weights = np.random.geometric(1 / n, size=rand_weights.shape)
+    boot_weights = rng.geometric(1 / n, size=rand_weights.shape)
     boot_weights = (boot_weights / np.sum(boot_weights, axis=0)[None, :])
     weights = rand_weights * boot_weights
     return rgmm(X, weights, n_components, n_inits, reg_covar, rand_weights)
@@ -148,10 +142,11 @@ def hardbootstrap_gmm(X, raw_weights, n_components, fraction, n_inits=30, reg_co
     fraction = np.clip(fraction, 0, 1)
     n_points = X.shape[0]
     n_samples = np.maximum(1, int(n_points * fraction))
+    rng = np.random.default_rng(seed)
 
     weights = np.zeros(shape=(n_points, n_inits))
     for i in range(n_inits):
-        sampled_indices = np.random.choice(
+        sampled_indices = rng.choice(
             n_points,
             size=n_samples,
             replace=True,
@@ -170,10 +165,11 @@ def simplebootstrap_gmm(X, n_components, fraction, n_inits=30, reg_covar=0.0, se
     fraction = np.clip(fraction, 0, 1)
     n_points = X.shape[0]
     n_samples = np.maximum(1, int(n_points * fraction))
+    rng = np.random.default_rng(seed)
 
     weights = np.zeros(shape=(n_points, n_inits))
     for i in range(n_inits):
-        sampled_indices = np.random.choice(
+        sampled_indices = rng.choice(
             n_points,
             size=n_samples,
             replace=False,
