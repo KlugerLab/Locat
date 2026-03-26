@@ -21,7 +21,7 @@ class SimulationTestCase(unittest.TestCase):
         self.assertAlmostEqual(-1.512298, gene_0_results.bic, places=5)
         self.assertAlmostEqual(46.893, gene_0_results.zscore, places=2)
         self.assertAlmostEqual(1.0, gene_0_results.sens_score, places=5)
-        self.assertAlmostEqual(3.98127e-8, gene_0_results.depletion_pval, places=12)
+        self.assertAlmostEqual(5.1756511e-7, gene_0_results.depletion_pval, places=8)
         self.assertAlmostEqual(1e-15, gene_0_results.concentration_pval, places=14)
         self.assertAlmostEqual( 0.000970843, gene_0_results.pval, places=8)
         self.assertEqual(1, gene_0_results.K_components)

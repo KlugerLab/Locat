@@ -1453,11 +1453,15 @@ def logsidak_from_logp(logp_min: float, m_eff: int) -> float:
       log p_sidák = log(1 - (1 - p_min)^m_eff)
                   = log(1 - exp(m_eff * log(1 - p_min)))
     with log(1 - p_min) = log1p(-exp(logp_min)).
+
+    This preserves the original locat_condensed depletion-scan behavior,
+    where the Sidák correction is applied for ordinary negative log-p values
+    and only skipped when there is effectively a single test.
     """
-    if m_eff <= 1 or logp_min <= 0:
-        return logp_min
+    if m_eff <= 1:
+        return float(logp_min)
     l1mp = np.log1p(-np.exp(logp_min))
-    return np.log1p(-np.exp(m_eff * l1mp))
+    return float(np.log1p(-np.exp(m_eff * l1mp)))
 
 
 @numba.njit
