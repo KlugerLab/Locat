@@ -1459,9 +1459,10 @@ def logsidak_from_logp(logp_min: float, m_eff: int) -> float:
     and only skipped when there is effectively a single test.
     """
     if m_eff <= 1:
-        return float(logp_min)
-    l1mp = np.log1p(-np.exp(logp_min))
-    return float(np.log1p(-np.exp(m_eff * l1mp)))
+        return logp_min
+    p_min = np.exp(logp_min)
+    p_sidak = -np.expm1(m_eff * np.log1p(-p_min))
+    return np.log(p_sidak)
 
 
 @numba.njit
