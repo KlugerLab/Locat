@@ -35,7 +35,7 @@ branch = 'main' if 'dev' in release_scm else f'v{version}'
 
 extensions = [
     'sphinx.ext.autodoc',
-    'myst_parser',
+    'myst_nb',
     'numpydoc',
     'sphinx.ext.extlinks',
     'sphinx.ext.intersphinx',
@@ -64,9 +64,6 @@ html_context = {
     "doc_path": "docs",
 }
 
-html_sidebars = {
-    "examples": []
-}
 
 html_theme_options = {
     "icon_links": [
@@ -86,6 +83,9 @@ intersphinx_mapping = {
 }
 
 plot_include_source = True
+
+# Notebooks: serve pre-executed outputs. Run `make publish-tutorial` in the repro repo before a release.
+nb_execution_mode = "off"
 
 
 def linkcode_resolve(domain, info):

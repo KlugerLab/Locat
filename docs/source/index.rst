@@ -12,7 +12,7 @@ Pages
    :maxdepth: 2
 
    self
-   examples
+   tutorials/index
    reference/modules
 
 
