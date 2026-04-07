@@ -13,7 +13,7 @@ class SimulationTestCase(unittest.TestCase):
 
         locat = LOCAT(adata, adata.obsm["coords"], k=10,
                       show_progress=False, knn=adata.obsp["connectivities"])
-        locat_results = locat.gmm_scan(genes=[gene_name])
+        locat_results = locat.gmm_scan(genes=[gene_name], weights_transform = None)
 
         gene_0_results = locat_results[gene_name]
 
