@@ -1,9 +1,8 @@
-from matplotlib.colors import LogNorm
-from sklearn import mixture
 import scanpy as sc
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.sparse as sp
 
 import itertools
 def train_clustering(adata, genesuse, pthresh = 0.5): #doesnt need embedding coords, just uses neighbors attr.
@@ -380,3 +379,76 @@ def plotgenes(
     plt.tight_layout()
     fig.subplots_adjust(hspace=0.4)
     plt.show()
+
+
+def get_gene_x(adata, gene, layer=None):
+    x = adata[:, gene].X if layer is None else adata[:, gene].layers[layer]
+    if sp.issparse(x):
+        x = x.toarray().ravel()
+    else:
+        x = np.asarray(x).ravel()
+    return x
+
+
+def plot_gene_umap_expressing_on_top(adata, gene, ax, expr_thresh=0.0, q_vmax=80,
+        layer=None, s_bg=5, s_expr=8, alpha_bg=0.6, alpha_expr=0.9,
+        use_log1p=True, cmap_genes="Reds", title_fs=12):
+    X = adata.obsm["X_umap"]
+    x = get_gene_x(adata, gene, layer=layer)
+    if use_log1p:
+        x_plot = np.log1p(np.clip(x, 0, None))
+        thresh = np.log1p(expr_thresh)
+    else:
+        x_plot = np.clip(x, 0, None)
+        thresh = expr_thresh
+    expr = x_plot > thresh
+    ax.scatter(X[:, 0], X[:, 1], c="gray", s=s_bg, alpha=alpha_bg, linewidths=0)
+    xe = x_plot[expr]
+    vmax = np.percentile(xe, q_vmax) if xe.size > 0 else 1.0
+    ax.scatter(X[expr, 0], X[expr, 1], c=np.clip(xe, 0, vmax), s=s_expr, alpha=alpha_expr,
+               cmap=cmap_genes, vmin=0, vmax=vmax, linewidths=0)
+    ax.set_title(gene, fontsize=title_fs, pad=6)
+    ax.set_xticks([]); ax.set_yticks([])
+    for spine in ax.spines.values(): spine.set_visible(False)
+    return vmax
+
+
+def plot_grid(adata, gene_lists, titles=None, expr_thresh=0.0, use_log1p=True, cmap="Reds"):
+    """Plot a grid of single-gene UMAP panels, one row per gene list.
+
+    Parameters
+    ----------
+    adata:
+        AnnData object with ``obsm["X_umap"]`` and expression in ``.X``.
+    gene_lists:
+        List of gene lists, one per row.
+    titles:
+        Row labels, one per entry in *gene_lists*. If None, rows are unlabelled.
+    expr_thresh:
+        Cells with expression <= this value are shown as background (default: 0.0).
+    use_log1p:
+        If True, apply log1p to expression before plotting (default: True).
+    cmap:
+        Colormap for expressing cells (default: ``"Reds"``).
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    n_rows = len(gene_lists)
+    n_cols = max(len(g) for g in gene_lists)
+    if titles is None:
+        titles = [""] * n_rows
+    if len(titles) != n_rows:
+        raise ValueError(f"titles length ({len(titles)}) must match gene_lists length ({n_rows})")
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(2.2 * n_cols, 2.5 * n_rows), squeeze=False)
+    for row, (genes, title) in enumerate(zip(gene_lists, titles)):
+        for i in range(n_cols):
+            ax = axes[row, i]
+            if i >= len(genes): ax.axis("off"); continue
+            plot_gene_umap_expressing_on_top(adata, genes[i], ax,
+                expr_thresh=expr_thresh, q_vmax=80, s_expr=8,
+                use_log1p=use_log1p, cmap_genes=cmap)
+        axes[row, 0].set_ylabel(title, fontsize=11)
+    plt.tight_layout(); plt.show()
+    return fig

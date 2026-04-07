@@ -1,6 +1,7 @@
 import math
 from typing import Callable
 
+import jax
 import numba
 import numpy as np
 from loguru import logger
@@ -37,6 +38,10 @@ class LOCATNullDistribution:
             std_func=PchipInterpolator(p, stds),
         )
 
+def clip_weights(x):
+    """Default weights transform: clip negative values to zero."""
+    return np.clip(np.asarray(x), 0.0, np.inf)
+
 
 class LOCAT:
     """
@@ -54,18 +59,20 @@ class LOCAT:
     _n_components_waypoints = None
     _disable_progress_info = True
     _rng: Generator = None
+    _reg_covar = None
 
     def __init__(
         self,
         adata: AnnData,
         cell_embedding: np.ndarray,
-        k: int,
+        k: int = 20,
         n_bootstrap_inits: int = 50,
         show_progress: bool = False,
         wgmm_dtype: str = "same",
         knn=None,
         knn_k: int | None = None,
         knn_mode: str = "binary",
+        reg_covar: float | None = None,
     ):
         """
         Create a Locat object
@@ -76,12 +83,12 @@ class LOCAT:
             The data in AnnData format, typically generated from Scanpy
         cell_embedding: np.ndarray
             The embedding to use in the analysis
-        k: int
-            The number of components to use in the GMM
+        k: int, optional
+            The number of nearest neighbors used to compute cell weights (default: 20)
         n_bootstrap_inits: int, optional
-            The number of initializations used in bootstrapping (default:50)
+            The number of initializations used in bootstrapping (default: 50)
         show_progress: bool, optional
-            If True, shows progress bar (default: True)
+            If True, shows progress bar (default: False)
         wgmm_dtype: str, optional
             The data type to use in the weighted GMM (default: same). Allowed values: "same", "float32" or "float64".
         knn: np.ndarray, optional
@@ -91,6 +98,9 @@ class LOCAT:
             The k parameter for computing k-nearest neighbors
         knn_mode: KnnMode, optional
             The mode to compute the K-nearest neighbors (default: "binary") "binary" or "connectivity"
+        reg_covar: float, optional
+            Regularization added to the covariance matrix diagonal for numerical stability.
+            If None, an automatic value is derived from the data geometry (default: None).
 
         See Also
         ----------
@@ -113,8 +123,7 @@ class LOCAT:
         self._knn = None
         self._knn_k = int(knn_k) if knn_k is not None else int(k)
         self._knn_mode = knn_mode
-
-        self._reg_covar = None
+        self._reg_covar = reg_covar
         if knn is not None:
             self.set_knn(knn)
     # ------------------------------------------------------------------
@@ -177,7 +186,7 @@ class LOCAT:
     def show_progress(self, show_progress=True):
         self._disable_progress_info = not show_progress
 
-    def init_rng(self, seed: int = 0):
+    def init_rng(self, seed: int = 0, global_seed: int = 13):
         """
         Initialized the random number generator.
 
@@ -185,9 +194,11 @@ class LOCAT:
         ----------
         seed: int, optional
             The seed to use
-
+        global_seed: int, optional
+            The seed to use for the global np.random
         """
         self._rng = np.random.default_rng(seed)
+        np.random.seed(global_seed or seed)
 
     # ------------------------------------------------------------------
     # Background GMM and LTST null
@@ -783,6 +794,19 @@ class LOCAT:
     # ------------------------------------------------------------------
     # Main scan used in practice
     # ------------------------------------------------------------------
+    @staticmethod
+    def _max_deficit(scan):
+        rows = scan.get("per_lambda")
+        if not rows:
+            p0, obs = scan.get("p0_abs"), scan.get("obs_prop")
+            return (p0 - obs) if (p0 is not None and obs is not None) else np.nan
+        deficits = [
+            float(row["p0_abs"]) - float(row["obs_prop"])
+            for row in rows
+            if row.get("p0_abs") is not None and row.get("obs_prop") is not None
+        ]
+        return max(deficits) if deficits else np.nan
+
     def bic_score(self, gmm1, gene_prior):
         bic_component_cost = self.n_dims * (self.n_dims + 3) / 2
         p = gmm1.pdf(self._embedding[gene_prior > 0, :])
@@ -796,7 +820,7 @@ class LOCAT:
     def gmm_scan(
         self,
         genes: list[str] | None = None,
-        weights_transform: Callable | None =None,
+        weights_transform: Callable = clip_weights,
         zscore_thresh: float =None,
         max_freq: float = 0.9,
         verbose: bool =False,
@@ -965,6 +989,7 @@ class LOCAT:
                     pval=p_final,
                     K_components=n_comp,
                     sample_size=sample_size,
+                    max_deficit=self._max_deficit(cs_res),
                     depletion_scan=cs_res if include_depletion_scan else None,
                 )
                 locally_enriched[i_result.gene_name] = i_result
@@ -975,6 +1000,7 @@ class LOCAT:
 
         if verbose:
             logger.info("gzeros:", len(gzeros), "freqzeros:", len(freqzeros), "zzeros:", len(zzeros))
+        jax.clear_caches()
         return locally_enriched
 
     # ------------------------------------------------------------------

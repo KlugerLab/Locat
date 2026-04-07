@@ -1,5 +1,8 @@
 from typing import NamedTuple
 
+import numpy as np
+
+
 class LocatResult(NamedTuple):
     """
     This class stores the location results for a gene
@@ -26,5 +29,7 @@ class LocatResult(NamedTuple):
     K_components: float
     #: The sample size, i.e. the number of cells expressing the gene
     sample_size: float
-    #: A large amount of debug features
-    depletion_scan: dict| None = None
+    #: The maximum depletion deficit across all scanned lambda values
+    max_deficit: float = np.nan
+    #: Full depletion scan output, included only when include_depletion_scan=True
+    depletion_scan: dict | None = None
