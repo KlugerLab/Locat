@@ -36,6 +36,7 @@ dependencies = [
     "loguru",
     "jax<0.7",
     "tensorflow_probability",
+    "python-louvain"
 ]
 
 [tool.flit.sdist]

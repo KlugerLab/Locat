@@ -66,7 +66,6 @@ class LOCAT:
         adata: AnnData,
         cell_embedding: np.ndarray,
         k: int = 20,
-        n_bootstrap_inits: int = 50,
         show_progress: bool = False,
         wgmm_dtype: str = "same",
         knn=None,
@@ -85,8 +84,6 @@ class LOCAT:
             The embedding to use in the analysis
         k: int, optional
             The number of nearest neighbors used to compute cell weights (default: 20)
-        n_bootstrap_inits: int, optional
-            The number of initializations used in bootstrapping (default: 50)
         show_progress: bool, optional
             If True, shows progress bar (default: False)
         wgmm_dtype: str, optional
@@ -119,7 +116,6 @@ class LOCAT:
         self._k = k
         self.n_cells, self.n_genes = self._adata.shape
         self.n_dims = self._embedding.shape[1]
-        self.n_bootstrap_inits = n_bootstrap_inits
         self._knn = None
         self._knn_k = int(knn_k) if knn_k is not None else int(k)
         self._knn_mode = knn_mode
@@ -524,7 +520,7 @@ class LOCAT:
         using random pseudo-genes:
           - pick random expressing cells at frequency p
           - fit signal GMM with the *same* pipeline as real genes
-          - compute LTST exactly as in gmm_scan_new
+          - compute LTST exactly as in gmm_scan
         """
         if fractions is None:
             fractions = 10 ** np.linspace(np.log10(10 / self.n_cells), 0, 7)
@@ -824,7 +820,6 @@ class LOCAT:
         zscore_thresh: float =None,
         max_freq: float = 0.9,
         verbose: bool =False,
-        n_bootstrap_inits: int =None,
         rc_lambda_values: list| None = None,
         rc_min_p0_abs: float = 0.10,
         rc_min_expected: int = 3,
@@ -853,8 +848,6 @@ class LOCAT:
             The maximum fraction of cells allowed to express the gene
         verbose: bool, optional
             If True, prints to the standard output
-        n_bootstrap_inits: int, optional
-            The number of initializations used in bootstrapping (default:50)
         rc_lambda_values: list[float], optional
             If not specified, a default is used
         rc_min_p0_abs: float, optional
@@ -890,8 +883,6 @@ class LOCAT:
             logger.info("gmm_scan: using depletion scan for depletion_pval (depletion_pval_scan)")
 
         self.init_rng()
-        if n_bootstrap_inits is not None:
-            self.n_bootstrap_inits = int(n_bootstrap_inits)
         rc_n_trials_cap_eff = (
             int(max(1, np.sqrt(self.n_cells)))
             if rc_n_trials_cap is None
